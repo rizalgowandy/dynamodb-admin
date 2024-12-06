@@ -57,44 +57,62 @@
       top: 0;
       width: 100%;
     }
+
+    .items-table th:first-child,
+    .items-table td:first-child {
+      position: sticky;
+      left: 0;
+    }
+
+    .items-table td:first-child {
+      background-color: white;
+    }
   </style>
+  <%- include('partials/head-tail') %>
 </head>
 <body class="container-fluid">
   <header>
-    <ol class="breadcrumb">
-      <a class="breadcrumb-item" href="/">Tables</a>
-      <a class="breadcrumb-item active">
-        <%= Table.TableName %>
-        <span class="badge badge-secondary badge-pill ml-1">
-          <%= Table.ItemCount %>
-        </span>
-      </a>
-    </ol>
+    <%
+      const breadcrumb = [
+        {
+          href: '/',
+          text: 'Tables',
+        },
+        {
+          active: true,
+          text: Table.TableName,
+          badge: Table.ItemCount,
+        },
+      ]
+    %>
+    <%- include('partials/breadcrumb', { breadcrumb }) %>
 
     <ul class="nav nav-tabs">
       <li class="nav-item">
-        <a class="nav-link active item-count" href="/tables/<%= Table.TableName %>">
+        <a class="nav-link active item-count" href="/tables/<%= encodeURIComponent(Table.TableName) %>">
           Items
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="/tables/<%= Table.TableName %>/get">
+        <a class="nav-link" href="/tables/<%= encodeURIComponent(Table.TableName) %>/get">
           Get
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="/tables/<%= Table.TableName %>/meta">Meta</a>
+        <a class="nav-link" href="/tables/<%= encodeURIComponent(Table.TableName) %>/meta">Meta</a>
       </li>
       <li class="nav-item ml-auto">
-        <a href="/tables/<%= Table.TableName %>/add-item" class="nav-link">Create item</a>
+        <a href="/tables/<%= encodeURIComponent(Table.TableName) %>/add-item" class="nav-link">Create item</a>
       </li>
     </ul>
+
+    <%- include('partials/error-container') %>
   </header>
 
   <main>
     <form
       autocomplete="off"
-      action="/tables/<%= Table.TableName %>"
+      action="/tables/<%= encodeURIComponent(Table.TableName) %>"
       method="get"
       style="padding-top: 20px;padding-bottom: 20px;"
       id="form"
@@ -165,7 +183,7 @@
                         <% } %>
                       </select>
                     </td>
-                    <td style="width: 80px">
+                    <td style="width: 140px">
                       <select class="form-control filter-row-operator">
                         <% for (const operator in operators) { %>
                           <option value="<%= operator %>"><%= operators[operator] %></option>
@@ -203,6 +221,13 @@
                  </li>
               </ul>
            </nav>
+           <div style="float: right; margin-right: 1em">
+             <select name="pageSize" class="form-control">
+               <% for (const [i, size] of [25, 100, 250, 500, 1000, 3000, 10000].entries()) { %>
+                 <option value="<%= size %>"<% if (Number.parseInt(query.pageSize) === size || (!query.pageSize && i === 0)) { %> selected<% } %>><%= size %></option>
+               <% } %>
+             </select>
+           </div>
         </div>
       </div>
     </form>
@@ -357,7 +382,7 @@
     }
 
     function addRangeKeyFilter (rangeKey, values) {
-      addFilter(rangeKey, values, true, ['=', '<', '<=', '>', '>=', 'BETWEEN', 'begins_with'])
+      addFilter(rangeKey, values, false, ['=', '<', '<=', '>', '>=', 'BETWEEN', 'begins_with'])
     }
 
     function removeFilter (node) {
@@ -378,11 +403,11 @@
     }
 
     function renderItems(data) {
-      $('#actions-row').append(data.uniqueKeys.map(key => '<td>' + key + '</td>'))
+      $('#actions-row').append(data.uniqueKeys.map(key => '<th scope="col">' + key + '</th>'))
 
       if (data.Items.length) {
         $('#items-container').append(data.Items.map(item => {
-          const viewUrl = '/tables/<%= Table.TableName %>/items/' + encodeURIComponent(Object.values(item.__key).join(','))
+          const viewUrl = '/tables/<%= encodeURIComponent(Table.TableName) %>/items/' + encodeURIComponent(Object.values(item.__key).join(','))
           const rowEl = $('<tr><td><a href="' + viewUrl + '">View</a></td></tr>')
 
           for (const column of data.uniqueKeys) {
@@ -391,15 +416,25 @@
             const value = item[column]
             let wrapperEl = null
 
-            if (Number.isInteger(value) && value >= 0) {
+            if (Number.isInteger(value)) {
               let dateValue
-              try {
-                dateValue = new Date(value).toISOString()
-              } catch (error) {
-                dateValue = error.message
+              if (value >= 10000000000) {  // 11 digits - assume date format in milliseconds
+                const date = new Date(value)
+                if (!isNaN(date)) {
+                  dateValue = `${date.toISOString()} (assumed milliseconds since epoch)`
+                }
+              } else if (value >= 100000000) {  // 9 digits - assume date format in seconds
+                const date = new Date(value * 1000)
+                if (!isNaN(date)) {
+                  dateValue = `${date.toISOString()} (assumed seconds since epoch)`
+                }
               }
 
-              wrapperEl = $('<abbr data-toggle="tooltip" data-placement="top" title="' + dateValue + '"></abbr>')
+              if (dateValue) {
+                wrapperEl = $('<abbr data-toggle="tooltip" data-placement="top" title="' + dateValue + '"></abbr>')
+              } else {
+                wrapperEl = $('<div class="preformatted"></div>')
+              }
             } else {
               wrapperEl = $('<div class="preformatted"></div>')
             }
@@ -410,15 +445,23 @@
           return rowEl
         }))
 
+        $('select[name="pageSize"]').on('change', (e) => {
+          const search = new URLSearchParams(location.search);
+          search.set('pageSize', e.target.value);
+          location.search = search.toString();
+        })
+
+        const pageSize = $('select[name="pageSize"]').val();
+
         if (data.pageNum > 1) {
           $('.page-link-previous')
-            .attr('href', '?startKey=' + data.prevKey + '&pageNum=' + (data.pageNum-1) + '&filters=' + data.filterQueryString)
+            .attr('href', '?startKey=' + data.prevKey + '&pageNum=' + (data.pageNum-1) + '&filters=' + data.filterQueryString + '&pageSize=' + pageSize)
           $('.page-item-previous').removeClass('disabled')
         }
 
         if (data.nextKey) {
           $('.page-link-next')
-            .attr('href', '?startKey=' + data.nextKey + '&prevKey=' + data.prevKey + '&pageNum=' + (data.pageNum+1) + '&filters=' + data.filterQueryString)
+            .attr('href', '?startKey=' + data.nextKey + '&prevKey=' + data.prevKey + '&pageNum=' + (data.pageNum+1) + '&filters=' + data.filterQueryString + '&pageSize=' + pageSize)
           $('.page-item-next').removeClass('disabled')
         }
 
@@ -470,18 +513,19 @@
       }
 
       fetch(document.location.pathname + '/items' + document.location.search)
-        .then(response => {
+        .then(async (response) => {
           if (response.ok) {
             return response.json()
           }
 
-          return response.text().then(text => Promise.reject(new Error(text)))
+          const responseText = await response.text()
+          throw new Error(JSON.parse(responseText).message)
         })
         .then(json => {
           renderItems(json)
         })
         .catch(error => {
-          alert('Error loading data: ' + error)
+          handleError(error.message)
         })
     })
     </script>
@@ -492,11 +536,11 @@
 
     <div class="table-container d-none">
       <div class="scroll-indicator"></div>
-      <div class="table-wrapper">
-        <table class="table items-table">
-          <thead>
+      <div class="table-wrapper table-responsive">
+        <table class="table items-table table-hover">
+          <thead class="thead-light">
             <tr id="actions-row">
-              <td>Actions</td>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody id="items-container">
@@ -505,7 +549,5 @@
       </div>
     </div>
   </main>
-
-  <%- include('partials/footer') %>
 </body>
 </html>

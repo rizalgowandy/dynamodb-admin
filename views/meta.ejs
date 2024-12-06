@@ -4,38 +4,47 @@
   <%- include('partials/head') %>
   <%- include('partials/ace-deps') %>
   <%- include('partials/bootstrap-deps') %>
+  <%- include('partials/head-tail') %>
 </head>
 <body class='container-fluid d-flex flex-column'>
   <header>
-    <ol class='breadcrumb'>
-      <a class='breadcrumb-item' href='/'>Tables</a>
-      <a class="breadcrumb-item active">
-        <%= Table.TableName %>
-        <span class="badge badge-secondary badge-pill ml-1">
-          <%= Table.ItemCount %>
-        </span>
-      </a>
-    </ol>
+    <%
+      const breadcrumb = [
+        {
+          href: '/',
+          text: 'Tables',
+        },
+        {
+          active: true,
+          text: Table.TableName,
+          badge: Table.ItemCount
+        },
+      ]
+    %>
+    <%- include('partials/breadcrumb', { breadcrumb }) %>
 
     <ul class='nav nav-tabs'>
       <li class='nav-item'>
-        <a class='nav-link' href='/tables/<%= Table.TableName %>'>
+        <a class='nav-link' href='/tables/<%= encodeURIComponent(Table.TableName) %>'>
           Items
         </a>
       </li>
       <li class="nav-item">
-        <a class="nav-link" href="/tables/<%= Table.TableName %>/get">
+        <a class="nav-link" href="/tables/<%= encodeURIComponent(Table.TableName) %>/get">
           Get
         </a>
       </li>
       <li class='nav-item'>
-        <a class='nav-link active' href='/tables/<%= Table.TableName %>/meta'>Meta</a>
+        <a class='nav-link active' href='/tables/<%= encodeURIComponent(Table.TableName) %>/meta'>Meta</a>
       </li>
     </ul>
+
+    <%- include('partials/error-container') %>
   </header>
 
   <main class="flex-fill d-flex flex-column">
     <div style="margin: 16px 0;">
+      <button id="purgeTable" type="button" class="btn btn-warning">Purge table</button>
       <button id="deleteTable" type="button" class="btn btn-danger">Delete table</button>
     </div>
     <div
@@ -46,16 +55,37 @@
     </div>
   </main>
   <script>
-      document.querySelector('#deleteTable').addEventListener('click', () => {
-          fetch('/tables/<%= Table.TableName %>', {
+      document.querySelector('#purgeTable').addEventListener('click', () => {
+          if (!confirm(`Are you sure you want to purge all records from table "<%= Table.TableName %>"?`)) {
+            return
+          }
+          fetch('/tables/<%= encodeURIComponent(Table.TableName) %>/all', {
               method: 'delete'
-          }).then((response) => {
+          }).then(async (response) => {
               if (!response.ok) {
-                  throw new Error
+                  const responseText = await response.text()
+                  throw new Error(JSON.parse(responseText).message)
+              }
+              window.location.href = '/tables/<%= encodeURIComponent(Table.TableName) %>'
+          }).catch((error) => {
+              handleError(error.message)
+          })
+      });
+
+      document.querySelector('#deleteTable').addEventListener('click', () => {
+          if (!confirm(`Are you sure you want to delete table "<%= Table.TableName %>"?`)) {
+            return
+          }
+          fetch('/tables/<%= encodeURIComponent(Table.TableName) %>', {
+              method: 'delete'
+          }).then(async (response) => {
+              if (!response.ok) {
+                  const responseText = await response.text()
+                  throw new Error(JSON.parse(responseText).message)
               }
               window.location.href = '/'
-          }).catch(() => {
-              window.alert('There was an error when attempting to delete the table.')
+          }).catch((error) => {
+              handleError(error.message)
           })
       });
 
@@ -73,13 +103,5 @@
       editor.setReadOnly(true);
       editor.setFontSize(14);
     </script>
-
-    <%- include('partials/footer') %>
-
-    <style>
-      .footer {
-        display: none;
-      }
-    </style>
 </body>
 </html>

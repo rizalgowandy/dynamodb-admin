@@ -4,23 +4,31 @@
   <%- include('partials/head') %>
   <%- include('partials/ace-deps') %>
   <%- include('partials/bootstrap-deps') %>
+  <%- include('partials/head-tail') %>
 </head>
 <body class='container-fluid d-flex flex-column'>
   <header>
-    <ol class='breadcrumb'>
-      <a class='breadcrumb-item' href='/'>Tables</a>
-      <a class='breadcrumb-item' href='/tables/<%= TableName %>'>
-        <%= Table.TableName %>
-        <span class="badge badge-secondary badge-pill ml-1">
-          <%= Table.ItemCount %>
-        </span>
-      </a>
-      <% if (Item.id) { %>
-        <span class='breadcrumb-item'>
-          <%= Item.id %>
-        </span>
-      <% } %>
-    </ol>
+    <%
+      const breadcrumb = [
+        {
+          href: '/',
+          text: 'Tables',
+        },
+        {
+          href: `/tables/${encodeURIComponent(TableName)}`,
+          text: Table.TableName,
+          badge: Table.ItemCount,
+        },
+      ]
+
+      if (Item.id) {
+        breadcrumb.push({ text: Item.id })
+      } else {
+        breadcrumb.push({ text: 'Item' })
+      }
+    %>
+    <%- include('partials/breadcrumb', { breadcrumb }) %>
+    <%- include('partials/error-container') %>
   </header>
 
   <main class='flex-fill d-flex flex-column'>
@@ -35,11 +43,12 @@
             'Content-Type': 'application/json'
           },
           body: editor.getValue()
-        }).then((response) => {
+        }).then(async (response) => {
           if (response.ok) {
             return response.json()
           } else {
-            throw new Error()
+            const responseText = await response.text()
+            throw new Error(JSON.parse(responseText).message)
           }
         }).then((json) => {
           if (document.location.pathname.endsWith('/add-item')) {
@@ -65,7 +74,7 @@
             saveButton.classList.add('btn-primary')
             saveButton.classList.remove('btn-warning')
           }, 2000)
-          console.error(error)
+          handleError(error.message)
         })
       }
       </script>
@@ -83,13 +92,15 @@
         event.preventDefault()
         fetch(document.location.pathname, {
           method: 'delete'
-        }).then((response) => {
+        }).then(async (response) => {
           if (response.ok) {
-            window.location = `/tables/<%= TableName %>`
+            window.location = `/tables/<%= encodeURIComponent(TableName) %>`
+          } else {
+            const responseText = await response.text()
+            throw new Error(JSON.parse(responseText).message)
           }
         }).catch((error) => {
-          console.error(error)
-          alert('There was an error.')
+          handleError(error.message)
         })
       }
       </script>
@@ -123,13 +134,5 @@
       </script>
     </article>
   </main>
-
-  <%- include('partials/footer') %>
-
-  <style>
-    .footer {
-      display: none;
-    }
-  </style>
 </body>
 </html>
